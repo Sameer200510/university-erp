@@ -1,6 +1,7 @@
 const prisma = require('../../../config/prisma');
 const nodemailer = require('nodemailer');
 const bcrypt = require('bcrypt');
+const AppError = require('../../../utils/AppError');
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -107,59 +108,61 @@ class LeadService {
 
   async processFinancePayment(referenceId, paymentData = {}, adminId, ipAddress) {
     const lead = await this.getLeadById(referenceId);
-    if (!lead) throw new Error('Admission application / Reference_ID not found');
+    if (!lead) throw new AppError('Admission application / Reference_ID not found', 404);
 
-    let payment = await prisma.payment.findUnique({ where: { admissionLeadId: lead.id } });
-    const oldStatus = payment ? payment.status : 'UNPAID';
+    return await prisma.$transaction(async (tx) => {
+      let payment = await tx.payment.findUnique({ where: { admissionLeadId: lead.id } });
+      const oldStatus = payment ? payment.status : 'UNPAID';
 
-    if (!payment) {
-      payment = await prisma.payment.create({
-        data: {
-          amount: paymentData.amount || 1500,
-          status: 'PAID',
-          paymentMode: paymentData.paymentMode || 'CASH',
-          transactionRef: paymentData.transactionRef || null,
-          paidAt: new Date(),
-          admissionLeadId: lead.id,
-        }
+      if (!payment) {
+        payment = await tx.payment.create({
+          data: {
+            amount: paymentData.amount || 1500,
+            status: 'PAID',
+            paymentMode: paymentData.paymentMode || 'CASH',
+            transactionRef: paymentData.transactionRef || null,
+            paidAt: new Date(),
+            admissionLeadId: lead.id,
+          }
+        });
+      } else {
+        payment = await tx.payment.update({
+          where: { id: payment.id },
+          data: {
+            status: 'PAID',
+            paymentMode: paymentData.paymentMode || 'CASH',
+            transactionRef: paymentData.transactionRef || null,
+            paidAt: new Date(),
+          }
+        });
+      }
+
+      const updatedLead = await tx.admissionLead.update({
+        where: { id: lead.id },
+        data: { status: 'PAID' }
       });
-    } else {
-      payment = await prisma.payment.update({
-        where: { id: payment.id },
-        data: {
-          status: 'PAID',
-          paymentMode: paymentData.paymentMode || 'CASH',
-          transactionRef: paymentData.transactionRef || null,
-          paidAt: new Date(),
-        }
-      });
-    }
 
-    const updatedLead = await prisma.admissionLead.update({
-      where: { id: lead.id },
-      data: { status: 'PAID' }
+      if (adminId) {
+        await tx.auditLog.create({
+          data: {
+            userId: adminId,
+            action: 'PROCESS_FINANCE_FEE_PAYMENT',
+            entityType: 'Payment',
+            entityId: payment.id,
+            oldValue: oldStatus,
+            newValue: 'PAID',
+            ipAddress: ipAddress || null
+          }
+        });
+      }
+
+      return { lead: updatedLead, payment };
     });
-
-    if (adminId) {
-      await prisma.auditLog.create({
-        data: {
-          userId: adminId,
-          action: 'PROCESS_FINANCE_FEE_PAYMENT',
-          entityType: 'Payment',
-          entityId: payment.id,
-          oldValue: oldStatus,
-          newValue: 'PAID',
-          ipAddress: ipAddress || null
-        }
-      });
-    }
-
-    return { lead: updatedLead, payment };
   }
 
   async updateStatus(leadId, status, adminId, ipAddress) {
     const lead = await this.getLeadById(leadId);
-    if (!lead) throw new Error('Lead not found');
+    if (!lead) throw new AppError('Lead not found', 404);
     const oldStatus = lead.status;
     const updatedLead = await prisma.admissionLead.update({
       where: { id: lead.id },
@@ -186,47 +189,47 @@ class LeadService {
 
   async approveLead(leadId, adminId, ipAddress) {
     const lead = await this.getLeadById(leadId);
-    if (!lead) throw new Error('Lead not found');
+    if (!lead) throw new AppError('Lead not found', 404);
 
     // Mandatory Fee Payment Check
     if (!lead.payment || (lead.payment.status !== 'PAID' && lead.payment.status !== 'SUCCESS')) {
-      throw new Error(`Admission approval denied: Mandatory Fee Payment is UNPAID (or Pending) for Reference_ID ${lead.id || leadId}. The student must complete payment at the Finance Office before admission can be approved.`);
+      throw new AppError(`Admission approval denied: Mandatory Fee Payment is UNPAID (or Pending) for Reference_ID ${lead.id || leadId}. The student must complete payment at the Finance Office before admission can be approved.`, 400);
     }
 
-    const updatedLead = await prisma.admissionLead.update({
-      where: { id: lead.id },
-      data: { status: 'APPROVED' }
-    });
+    const { updatedLead, erpId, tempPassword } = await prisma.$transaction(async (tx) => {
+      const uLead = await tx.admissionLead.update({
+        where: { id: lead.id },
+        data: { status: 'APPROVED' }
+      });
 
-    // Audit Log
-    await prisma.auditLog.create({
-      data: {
-        userId: adminId,
-        action: 'APPROVE_ADMISSION_LEAD',
-        entityType: 'AdmissionLead',
-        entityId: lead.id,
-        oldValue: 'PENDING',
-        newValue: 'APPROVED',
-        ipAddress: ipAddress || null
-      }
-    });
+      await tx.auditLog.create({
+        data: {
+          userId: adminId,
+          action: 'APPROVE_ADMISSION_LEAD',
+          entityType: 'AdmissionLead',
+          entityId: lead.id,
+          oldValue: 'PENDING',
+          newValue: 'APPROVED',
+          ipAddress: ipAddress || null
+        }
+      });
 
-    // Simulate ERP Account Generation
-    const erpId = `${new Date().getFullYear()}${Math.floor(10000 + Math.random() * 90000)}`;
-    const tempPassword = Math.random().toString(36).slice(-8);
-    const hashedPassword = await bcrypt.hash(tempPassword, 10);
+      const timestamp = Date.now();
+      const randomDigits = Math.floor(1000 + Math.random() * 9000);
+      const generatedErpId = `${new Date().getFullYear()}${timestamp.toString().slice(-4)}${randomDigits}`;
+      const genTempPassword = Math.random().toString(36).slice(-8);
+      const hashedPassword = await bcrypt.hash(genTempPassword, 10);
 
-    try {
-      const user = await prisma.user.create({
+      const user = await tx.user.create({
         data: {
           email: lead.email,
-          loginId: erpId,
+          loginId: generatedErpId,
           passwordHash: hashedPassword,
           role: 'STUDENT',
         },
       });
 
-      await prisma.studentProfile.create({
+      await tx.studentProfile.create({
         data: {
           userId: user.id,
           firstName: lead.firstName,
@@ -236,6 +239,10 @@ class LeadService {
         },
       });
 
+      return { updatedLead: uLead, erpId: generatedErpId, tempPassword: genTempPassword };
+    });
+
+    try {
       await transporter.sendMail({
         from: process.env.GMAIL_USER ? `Admissions <${process.env.GMAIL_USER}>` : 'Admissions',
         to: lead.email,
@@ -255,7 +262,7 @@ class LeadService {
         `,
       });
     } catch (err) {
-      console.error("Account generation or email failed:", err);
+      console.error("Account generation or email failed non-fatally:", err);
     }
 
     return updatedLead;

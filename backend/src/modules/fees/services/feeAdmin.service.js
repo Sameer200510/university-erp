@@ -1,4 +1,5 @@
 const prisma = require("../../../config/prisma");
+const AppError = require("../../../utils/AppError");
 
 class FeeAdminService {
   /**
@@ -177,7 +178,7 @@ class FeeAdminService {
     });
 
     if (students.length === 0) {
-      throw new Error(`No students found for Course: ${courseId} and Batch: ${batch || "All"}`);
+      throw new AppError(`No students found for Course: ${courseId} and Batch: ${batch || "All"}`, 404);
     }
 
     const heads = await prisma.feeHead.findMany();
@@ -239,47 +240,54 @@ class FeeAdminService {
         }
       }
 
-      const invoiceNo = `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-      const invoice = await prisma.feeInvoice.create({
-        data: {
-          invoiceNo,
-          studentId: student.id,
-          semester: sem,
-          totalAmount,
-          discountAmount: 0,
-          netAmount: totalAmount,
-          paidAmount: 0,
-          status: "PENDING",
-          dueDate: new Date(dueDate || Date.now() + 30 * 24 * 60 * 60 * 1000),
-          items: {
-            create: itemsData,
+      const timestamp = Date.now();
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      const invoiceNo = `INV-${new Date().getFullYear()}-${timestamp}-${randomSuffix}`;
+
+      const invoice = await prisma.$transaction(async (tx) => {
+        const createdInvoice = await tx.feeInvoice.create({
+          data: {
+            invoiceNo,
+            studentId: student.id,
+            semester: sem,
+            totalAmount,
+            discountAmount: 0,
+            netAmount: totalAmount,
+            paidAmount: 0,
+            status: "PENDING",
+            dueDate: new Date(dueDate || Date.now() + 30 * 24 * 60 * 60 * 1000),
+            items: {
+              create: itemsData,
+            },
           },
-        },
-        include: { items: true },
-      });
+          include: { items: true },
+        });
 
-      // Post DEBIT to Student Ledger
-      await prisma.studentLedger.create({
-        data: {
-          studentId: student.id,
-          type: "DEBIT",
-          amount: totalAmount,
-          referenceId: invoice.id,
-          referenceType: "INVOICE",
-          description: `Invoice ${invoiceNo} generated for Semester ${sem}`,
-          balanceAfter: totalAmount,
-        },
-      });
+        // Post DEBIT to Student Ledger
+        await tx.studentLedger.create({
+          data: {
+            studentId: student.id,
+            type: "DEBIT",
+            amount: totalAmount,
+            referenceId: createdInvoice.id,
+            referenceType: "INVOICE",
+            description: `Invoice ${invoiceNo} generated for Semester ${sem}`,
+            balanceAfter: totalAmount,
+          },
+        });
 
-      // Post General Ledger
-      await prisma.generalLedger.create({
-        data: {
-          accountHead: "ACCOUNTS_RECEIVABLE",
-          debit: totalAmount,
-          credit: 0,
-          referenceId: invoice.id,
-          description: `Receivable from ${student.firstName} ${student.lastName} (${invoiceNo})`,
-        },
+        // Post General Ledger
+        await tx.generalLedger.create({
+          data: {
+            accountHead: "ACCOUNTS_RECEIVABLE",
+            debit: totalAmount,
+            credit: 0,
+            referenceId: createdInvoice.id,
+            description: `Receivable from ${student.firstName} ${student.lastName} (${invoiceNo})`,
+          },
+        });
+
+        return createdInvoice;
       });
 
       generatedInvoices.push(invoice);
@@ -297,192 +305,203 @@ class FeeAdminService {
    * Cashier Offline Payment Collection (Cash, Cheque, DD)
    */
   async collectOfflinePayment(data) {
-    const { studentId, invoiceId, amount, paymentMode, chequeOrDdNumber, bankName, chequeDate, collectedBy } = data;
+    return await prisma.$transaction(async (tx) => {
+      const { studentId, invoiceId, amount, paymentMode, chequeOrDdNumber, bankName, chequeDate, collectedBy } = data;
 
-    const invoice = await prisma.feeInvoice.findUnique({
-      where: { id: invoiceId },
-      include: { student: true },
-    });
-    if (!invoice) throw new Error("Invoice not found");
+      const invoice = await tx.feeInvoice.findUnique({
+        where: { id: invoiceId },
+        include: { student: true },
+      });
+      if (!invoice) throw new AppError("Invoice not found", 404);
+      if (invoice.status === "PAID") throw new AppError("Invoice is already fully paid", 400);
 
-    const payAmount = Number(amount);
-    const transactionNo = `TXN-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
-    const receiptNumber = `REC-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
+      const payAmount = Number(amount);
+      if (isNaN(payAmount) || payAmount <= 0) {
+        throw new AppError("Invalid payment amount", 400);
+      }
 
-    // Create FeeTransaction
-    const transaction = await prisma.feeTransaction.create({
-      data: {
-        transactionNo,
-        invoiceId,
-        studentId: invoice.studentId,
-        amount: payAmount,
-        paymentMode: paymentMode || "OFFLINE_CASH",
-        chequeOrDdNumber: chequeOrDdNumber || null,
-        bankName: bankName || null,
-        chequeDate: chequeDate ? new Date(chequeDate) : null,
-        status: "SUCCESS",
-        collectedBy: collectedBy || "Admin Counter",
+      const timestamp = Date.now();
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      const transactionNo = `TXN-${new Date().getFullYear()}-${timestamp}-${randomSuffix}`;
+      const receiptNumber = `REC-${new Date().getFullYear()}-${timestamp}-${randomSuffix}`;
+
+      // Create FeeTransaction
+      const transaction = await tx.feeTransaction.create({
+        data: {
+          transactionNo,
+          invoiceId,
+          studentId: invoice.studentId,
+          amount: payAmount,
+          paymentMode: paymentMode || "OFFLINE_CASH",
+          chequeOrDdNumber: chequeOrDdNumber || null,
+          bankName: bankName || null,
+          chequeDate: chequeDate ? new Date(chequeDate) : null,
+          status: "SUCCESS",
+          collectedBy: collectedBy || "Admin Counter",
+          receiptNumber,
+        },
+      });
+
+      // Update Invoice status and paidAmount
+      const newPaidAmount = invoice.paidAmount + payAmount;
+      const newStatus = newPaidAmount >= invoice.netAmount ? "PAID" : "PARTIAL";
+      await tx.feeInvoice.update({
+        where: { id: invoiceId },
+        data: {
+          paidAmount: newPaidAmount,
+          status: newStatus,
+        },
+      });
+
+      // Post CREDIT to StudentLedger
+      await tx.studentLedger.create({
+        data: {
+          studentId: invoice.studentId,
+          type: "CREDIT",
+          amount: payAmount,
+          referenceId: transaction.id,
+          referenceType: "PAYMENT",
+          description: `Payment received (${paymentMode}) - Receipt: ${receiptNumber}`,
+          balanceAfter: invoice.netAmount - newPaidAmount,
+        },
+      });
+
+      // Post General Ledger
+      const assetHead = paymentMode === "OFFLINE_CASH" ? "CASH_IN_HAND" : "BANK_ACCOUNT";
+      await tx.generalLedger.create({
+        data: {
+          accountHead: assetHead,
+          debit: payAmount,
+          credit: 0,
+          referenceId: transaction.id,
+          description: `${paymentMode} received from ${invoice.student.firstName} ${invoice.student.lastName} (${receiptNumber})`,
+        },
+      });
+
+      await tx.generalLedger.create({
+        data: {
+          accountHead: "ACCOUNTS_RECEIVABLE",
+          debit: 0,
+          credit: payAmount,
+          referenceId: transaction.id,
+          description: `Receivable cleared for Invoice ${invoice.invoiceNo}`,
+        },
+      });
+
+      return {
+        success: true,
+        transaction,
         receiptNumber,
-      },
+      };
     });
-
-    // Update Invoice status and paidAmount
-    const newPaidAmount = invoice.paidAmount + payAmount;
-    const newStatus = newPaidAmount >= invoice.netAmount ? "PAID" : "PARTIAL";
-    await prisma.feeInvoice.update({
-      where: { id: invoiceId },
-      data: {
-        paidAmount: newPaidAmount,
-        status: newStatus,
-      },
-    });
-
-    // Post CREDIT to StudentLedger
-    await prisma.studentLedger.create({
-      data: {
-        studentId: invoice.studentId,
-        type: "CREDIT",
-        amount: payAmount,
-        referenceId: transaction.id,
-        referenceType: "PAYMENT",
-        description: `Payment received (${paymentMode}) - Receipt: ${receiptNumber}`,
-        balanceAfter: invoice.netAmount - newPaidAmount,
-      },
-    });
-
-    // Post General Ledger
-    const assetHead = paymentMode === "OFFLINE_CASH" ? "CASH_IN_HAND" : "BANK_ACCOUNT";
-    await prisma.generalLedger.create({
-      data: {
-        accountHead: assetHead,
-        debit: payAmount,
-        credit: 0,
-        referenceId: transaction.id,
-        description: `${paymentMode} received from ${invoice.student.firstName} ${invoice.student.lastName} (${receiptNumber})`,
-      },
-    });
-
-    await prisma.generalLedger.create({
-      data: {
-        accountHead: "ACCOUNTS_RECEIVABLE",
-        debit: 0,
-        credit: payAmount,
-        referenceId: transaction.id,
-        description: `Receivable cleared for Invoice ${invoice.invoiceNo}`,
-      },
-    });
-
-    return {
-      success: true,
-      transaction,
-      receiptNumber,
-    };
   }
 
   /**
    * Cheque Bounce / Reversal Logic with automatic fine
    */
   async markChequeBounce(transactionId, fineAmount = 1000) {
-    const transaction = await prisma.feeTransaction.findUnique({
-      where: { id: transactionId },
-      include: { invoice: { include: { student: true } } },
-    });
+    return await prisma.$transaction(async (tx) => {
+      const transaction = await tx.feeTransaction.findUnique({
+        where: { id: transactionId },
+        include: { invoice: { include: { student: true } } },
+      });
 
-    if (!transaction) throw new Error("Transaction not found");
-    if (transaction.status === "BOUNCED") throw new Error("Cheque is already marked as BOUNCED!");
+      if (!transaction) throw new AppError("Transaction not found", 404);
+      if (transaction.status === "BOUNCED") throw new AppError("Cheque is already marked as BOUNCED!", 400);
 
-    const invoice = transaction.invoice;
-    const student = invoice.student;
+      const invoice = transaction.invoice;
+      const student = invoice.student;
 
-    // 1. Mark transaction status as BOUNCED
-    await prisma.feeTransaction.update({
-      where: { id: transactionId },
-      data: { status: "BOUNCED" },
-    });
+      // 1. Mark transaction status as BOUNCED
+      await tx.feeTransaction.update({
+        where: { id: transactionId },
+        data: { status: "BOUNCED" },
+      });
 
-    // 2. Reverse paidAmount from Invoice and reset status
-    const revertedPaidAmount = Math.max(0, invoice.paidAmount - transaction.amount);
-    const bounceHead = await prisma.feeHead.findFirst({ where: { code: "CHEQUE_BOUNCE" } });
-    const fine = Number(fineAmount) || (bounceHead ? bounceHead.defaultAmount : 1000);
+      // 2. Reverse paidAmount from Invoice and reset status
+      const revertedPaidAmount = Math.max(0, invoice.paidAmount - transaction.amount);
+      const bounceHead = await tx.feeHead.findFirst({ where: { code: "CHEQUE_BOUNCE" } });
+      const fine = Number(fineAmount) || (bounceHead ? bounceHead.defaultAmount : 1000);
 
-    const newTotalAmount = invoice.totalAmount + fine;
-    const newNetAmount = invoice.netAmount + fine;
-    const newStatus = revertedPaidAmount >= newNetAmount ? "PAID" : new Date(invoice.dueDate) < new Date() ? "OVERDUE" : "PENDING";
+      const newTotalAmount = invoice.totalAmount + fine;
+      const newNetAmount = invoice.netAmount + fine;
+      const newStatus = revertedPaidAmount >= newNetAmount ? "PAID" : new Date(invoice.dueDate) < new Date() ? "OVERDUE" : "PENDING";
 
-    // Add Cheque Bounce fine to invoice items
-    if (bounceHead) {
-      await prisma.feeInvoiceItem.create({
+      // Add Cheque Bounce fine to invoice items
+      if (bounceHead) {
+        await tx.feeInvoiceItem.create({
+          data: {
+            invoiceId: invoice.id,
+            feeHeadId: bounceHead.id,
+            amount: fine,
+            description: `Cheque Dishonor Penalty (${transaction.chequeOrDdNumber || transaction.transactionNo})`,
+          },
+        });
+      }
+
+      await tx.feeInvoice.update({
+        where: { id: invoice.id },
         data: {
-          invoiceId: invoice.id,
-          feeHeadId: bounceHead.id,
-          amount: fine,
-          description: `Cheque Dishonor Penalty (${transaction.chequeOrDdNumber || transaction.transactionNo})`,
+          totalAmount: newTotalAmount,
+          netAmount: newNetAmount,
+          paidAmount: revertedPaidAmount,
+          status: newStatus,
         },
       });
-    }
 
-    await prisma.feeInvoice.update({
-      where: { id: invoice.id },
-      data: {
-        totalAmount: newTotalAmount,
-        netAmount: newNetAmount,
-        paidAmount: revertedPaidAmount,
-        status: newStatus,
-      },
+      // 3. Post DEBIT reversal & Fine in StudentLedger
+      await tx.studentLedger.create({
+        data: {
+          studentId: student.id,
+          type: "DEBIT",
+          amount: transaction.amount,
+          referenceId: transaction.id,
+          referenceType: "CHEQUE_BOUNCE",
+          description: `Payment Reversed due to Cheque Bounce (${transaction.chequeOrDdNumber || transaction.transactionNo})`,
+          balanceAfter: newNetAmount - revertedPaidAmount,
+        },
+      });
+
+      await tx.studentLedger.create({
+        data: {
+          studentId: student.id,
+          type: "DEBIT",
+          amount: fine,
+          referenceId: invoice.id,
+          referenceType: "PENALTY",
+          description: `Cheque Bounce Fine applied (${transaction.chequeOrDdNumber || transaction.transactionNo})`,
+          balanceAfter: newNetAmount - revertedPaidAmount,
+        },
+      });
+
+      // 4. Post General Ledger adjustment
+      await tx.generalLedger.create({
+        data: {
+          accountHead: "BANK_ACCOUNT",
+          debit: 0,
+          credit: transaction.amount,
+          referenceId: transaction.id,
+          description: `Cheque bounced reversal (${transaction.chequeOrDdNumber || transaction.transactionNo})`,
+        },
+      });
+
+      await tx.generalLedger.create({
+        data: {
+          accountHead: "PENALTY_REVENUE",
+          debit: 0,
+          credit: fine,
+          referenceId: transaction.id,
+          description: `Cheque bounce fine recognized (${invoice.invoiceNo})`,
+        },
+      });
+
+      return {
+        success: true,
+        message: `Cheque bounce marked. Payment of ₹${transaction.amount} reversed and fine of ₹${fine} charged to ${student.firstName} ${student.lastName}.`,
+        invoiceNo: invoice.invoiceNo,
+        fineAmount: fine,
+      };
     });
-
-    // 3. Post DEBIT reversal & Fine in StudentLedger
-    await prisma.studentLedger.create({
-      data: {
-        studentId: student.id,
-        type: "DEBIT",
-        amount: transaction.amount,
-        referenceId: transaction.id,
-        referenceType: "CHEQUE_BOUNCE",
-        description: `Payment Reversed due to Cheque Bounce (${transaction.chequeOrDdNumber || transaction.transactionNo})`,
-        balanceAfter: newNetAmount - revertedPaidAmount,
-      },
-    });
-
-    await prisma.studentLedger.create({
-      data: {
-        studentId: student.id,
-        type: "DEBIT",
-        amount: fine,
-        referenceId: invoice.id,
-        referenceType: "PENALTY",
-        description: `Cheque Bounce Fine applied (${transaction.chequeOrDdNumber || transaction.transactionNo})`,
-        balanceAfter: newNetAmount - revertedPaidAmount,
-      },
-    });
-
-    // 4. Post General Ledger adjustment
-    await prisma.generalLedger.create({
-      data: {
-        accountHead: "BANK_ACCOUNT",
-        debit: 0,
-        credit: transaction.amount,
-        referenceId: transaction.id,
-        description: `Cheque bounced reversal (${transaction.chequeOrDdNumber || transaction.transactionNo})`,
-      },
-    });
-
-    await prisma.generalLedger.create({
-      data: {
-        accountHead: "PENALTY_REVENUE",
-        debit: 0,
-        credit: fine,
-        referenceId: transaction.id,
-        description: `Cheque bounce fine recognized (${invoice.invoiceNo})`,
-      },
-    });
-
-    return {
-      success: true,
-      message: `Cheque bounce marked. Payment of ₹${transaction.amount} reversed and fine of ₹${fine} charged to ${student.firstName} ${student.lastName}.`,
-      invoiceNo: invoice.invoiceNo,
-      fineAmount: fine,
-    };
   }
 
   /**

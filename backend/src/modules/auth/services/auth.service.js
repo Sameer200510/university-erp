@@ -2,11 +2,15 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { Client } = require("pg");
 const authRepository = require("../repositories/auth.repository");
+const AppError = require("../../../utils/AppError");
 
 class AuthService {
   async crossQueryCollegeErp(loginId) {
+    if (!process.env.ADMISSION_DB_URL) {
+      return null;
+    }
     const client = new Client({
-      connectionString: 'postgresql://postgres:postgres@127.0.0.1:5440/admission_db?schema=public&sslmode=disable'
+      connectionString: process.env.ADMISSION_DB_URL,
     });
     try {
       await client.connect();
@@ -27,10 +31,9 @@ class AuthService {
       }
       return null;
     } catch (err) {
-      // console.error("Error cross-querying college_erp:", err);
       return null;
     } finally {
-      await client.end();
+      try { await client.end(); } catch (e) {}
     }
   }
 
@@ -80,17 +83,17 @@ class AuthService {
     }
 
     if (!user) {
-      throw new Error("Invalid user ID or password");
+      throw new AppError("Invalid user ID or password", 401);
     }
 
     if (user.status !== "ACTIVE") {
-      throw new Error("Account is not active");
+      throw new AppError("Account is not active", 403);
     }
 
     const isMatch = await bcrypt.compare(password, user.passwordHash);
 
     if (!isMatch) {
-      throw new Error("Invalid user ID or password");
+      throw new AppError("Invalid user ID or password", 401);
     }
 
     const token = jwt.sign(
@@ -109,7 +112,6 @@ class AuthService {
 
     return {
       token,
-
       user: {
         id: user.id,
         loginId: user.loginId,
@@ -125,27 +127,26 @@ class AuthService {
     const user = await authRepository.findUserById(userId);
 
     if (!user) {
-      throw new Error("User not found");
+      throw new AppError("User not found", 404);
     }
 
     const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
 
     if (!isMatch) {
-      throw new Error("Incorrect current password");
+      throw new AppError("Incorrect current password", 400);
     }
 
     if (newPassword.length < 8) {
-      throw new Error("Password must be at least 8 characters long");
+      throw new AppError("Password must be at least 8 characters long", 400);
     }
 
     const strongPassword = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/;
 
     if (!strongPassword.test(newPassword)) {
-      throw new Error("Password must contain uppercase, lowercase and number");
+      throw new AppError("Password must contain uppercase, lowercase and number", 400);
     }
 
     const salt = await bcrypt.genSalt(10);
-
     const passwordHash = await bcrypt.hash(newPassword, salt);
 
     await authRepository.updateUserPassword(userId, passwordHash, false);
@@ -164,7 +165,6 @@ class AuthService {
     }
 
     const salt = await bcrypt.genSalt(10);
-
     const passwordHash = await bcrypt.hash(password, salt);
 
     return await authRepository.createUser({

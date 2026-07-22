@@ -1,6 +1,12 @@
 const prisma = require("../../../config/prisma");
 
 class DocumentRepository {
+  async getDocumentById(id, userId) {
+    return await prisma.document.findFirst({
+      where: { id, userId },
+    });
+  }
+
   async getDocumentsByUserId(userId) {
     return await prisma.document.findMany({
       where: { userId },

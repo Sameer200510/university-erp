@@ -1,6 +1,7 @@
 const prisma = require("../../../config/prisma");
 const feesRepository = require("../repositories/fees.repository");
 const receiptPdfService = require("./receiptPdf.service");
+const AppError = require("../../../utils/AppError");
 
 class FeesService {
   /**
@@ -119,77 +120,86 @@ class FeesService {
    * Simulate Student Online Payment Checkout (Razorpay / Stripe / UPI)
    */
   async payOnline({ userId, invoiceId, amount, paymentMode, gatewayTxnId }) {
-    const student = await prisma.studentProfile.findUnique({ where: { userId } });
-    if (!student) throw new Error("Student profile not found");
+    return await prisma.$transaction(async (tx) => {
+      const student = await tx.studentProfile.findUnique({ where: { userId } });
+      if (!student) throw new AppError("Student profile not found", 404);
 
-    const invoice = await prisma.feeInvoice.findUnique({ where: { id: invoiceId } });
-    if (!invoice) throw new Error("Invoice not found");
+      const invoice = await tx.feeInvoice.findUnique({ where: { id: invoiceId } });
+      if (!invoice) throw new AppError("Invoice not found", 404);
+      if (invoice.status === "PAID") throw new AppError("Invoice is already fully paid", 400);
 
-    const payAmount = Number(amount);
-    const transactionNo = `TXN-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
-    const receiptNumber = `REC-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
+      const payAmount = Number(amount);
+      if (isNaN(payAmount) || payAmount <= 0) {
+        throw new AppError("Invalid payment amount", 400);
+      }
 
-    const transaction = await prisma.feeTransaction.create({
-      data: {
-        transactionNo,
-        invoiceId,
-        studentId: student.id,
-        amount: payAmount,
-        paymentMode: paymentMode || "ONLINE_RAZORPAY",
-        gatewayTxnId: gatewayTxnId || `PAY_${Date.now()}`,
-        status: "SUCCESS",
-        collectedBy: "ONLINE",
+      const timestamp = Date.now();
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      const transactionNo = `TXN-${new Date().getFullYear()}-${timestamp}-${randomSuffix}`;
+      const receiptNumber = `REC-${new Date().getFullYear()}-${timestamp}-${randomSuffix}`;
+
+      const transaction = await tx.feeTransaction.create({
+        data: {
+          transactionNo,
+          invoiceId,
+          studentId: student.id,
+          amount: payAmount,
+          paymentMode: paymentMode || "ONLINE_RAZORPAY",
+          gatewayTxnId: gatewayTxnId || `PAY_${timestamp}_${randomSuffix}`,
+          status: "SUCCESS",
+          collectedBy: "ONLINE",
+          receiptNumber,
+        },
+      });
+
+      const newPaidAmount = invoice.paidAmount + payAmount;
+      const newStatus = newPaidAmount >= invoice.netAmount ? "PAID" : "PARTIAL";
+      await tx.feeInvoice.update({
+        where: { id: invoiceId },
+        data: {
+          paidAmount: newPaidAmount,
+          status: newStatus,
+        },
+      });
+
+      await tx.studentLedger.create({
+        data: {
+          studentId: student.id,
+          type: "CREDIT",
+          amount: payAmount,
+          referenceId: transaction.id,
+          referenceType: "PAYMENT",
+          description: `Online Payment (${paymentMode}) - Receipt: ${receiptNumber}`,
+          balanceAfter: invoice.netAmount - newPaidAmount,
+        },
+      });
+
+      await tx.generalLedger.create({
+        data: {
+          accountHead: "BANK_ACCOUNT",
+          debit: payAmount,
+          credit: 0,
+          referenceId: transaction.id,
+          description: `Online fee collection (${paymentMode}) from ${student.firstName} ${student.lastName}`,
+        },
+      });
+
+      await tx.generalLedger.create({
+        data: {
+          accountHead: "ACCOUNTS_RECEIVABLE",
+          debit: 0,
+          credit: payAmount,
+          referenceId: transaction.id,
+          description: `Receivable cleared for Invoice ${invoice.invoiceNo}`,
+        },
+      });
+
+      return {
+        success: true,
+        transaction,
         receiptNumber,
-      },
+      };
     });
-
-    const newPaidAmount = invoice.paidAmount + payAmount;
-    const newStatus = newPaidAmount >= invoice.netAmount ? "PAID" : "PARTIAL";
-    await prisma.feeInvoice.update({
-      where: { id: invoiceId },
-      data: {
-        paidAmount: newPaidAmount,
-        status: newStatus,
-      },
-    });
-
-    await prisma.studentLedger.create({
-      data: {
-        studentId: student.id,
-        type: "CREDIT",
-        amount: payAmount,
-        referenceId: transaction.id,
-        referenceType: "PAYMENT",
-        description: `Online Payment (${paymentMode}) - Receipt: ${receiptNumber}`,
-        balanceAfter: invoice.netAmount - newPaidAmount,
-      },
-    });
-
-    await prisma.generalLedger.create({
-      data: {
-        accountHead: "BANK_ACCOUNT",
-        debit: payAmount,
-        credit: 0,
-        referenceId: transaction.id,
-        description: `Online fee collection (${paymentMode}) from ${student.firstName} ${student.lastName}`,
-      },
-    });
-
-    await prisma.generalLedger.create({
-      data: {
-        accountHead: "ACCOUNTS_RECEIVABLE",
-        debit: 0,
-        credit: payAmount,
-        referenceId: transaction.id,
-        description: `Receivable cleared for Invoice ${invoice.invoiceNo}`,
-      },
-    });
-
-    return {
-      success: true,
-      transaction,
-      receiptNumber,
-    };
   }
 
   async getInstallments(userId) {

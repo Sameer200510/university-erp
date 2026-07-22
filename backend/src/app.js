@@ -2,6 +2,8 @@ const helmet = require("helmet");
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+const errorHandler = require("./middleware/error.middleware");
+const { apiLimiter } = require("./middleware/rateLimiter.middleware");
 
 const authRoutes = require("./modules/auth/routes/auth.routes");
 const studentRoutes = require("./modules/student/routes/student.routes");
@@ -45,9 +47,12 @@ app.use(
   express.static(path.join(__dirname, "../uploads"), {
     setHeaders: (res) => {
       res.set("Access-Control-Allow-Origin", "*");
+      res.set("X-Content-Type-Options", "nosniff");
     },
   }),
 );
+
+app.use("/api", apiLimiter);
 
 app.get("/api/health", (req, res) => {
   res.status(200).json({
@@ -77,13 +82,6 @@ app.use((req, res) => {
   });
 });
 
-app.use((err, req, res, next) => {
-  console.error(err);
-
-  res.status(err.statusCode || 500).json({
-    success: false,
-    message: err.message || "Internal Server Error",
-  });
-});
+app.use(errorHandler);
 
 module.exports = app;

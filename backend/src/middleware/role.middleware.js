@@ -1,19 +1,17 @@
 const authorizeRole = (...roles) => {
+  const allowedRoles = roles.flat();
   return (req, res, next) => {
-    console.log("REQ USER =", req.user);
-    console.log("ALLOWED ROLES =", roles);
-
-    if (!req.user) {
+    if (!req.user || !req.user.role) {
       return res.status(401).json({
         success: false,
-        message: "Unauthorized",
+        message: "Unauthorized: User not authenticated",
       });
     }
 
-    if (!roles.includes(req.user.role)) {
+    if (!allowedRoles.includes(req.user.role)) {
       return res.status(403).json({
         success: false,
-        message: "Forbidden",
+        message: "Forbidden: You do not have permission to access this resource",
       });
     }
 
