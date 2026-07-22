@@ -15,6 +15,9 @@ const dbUrl = process.env.DATABASE_URL;
 
 const poolConfig = {
   connectionString: dbUrl,
+  max: 15,
+  idleTimeoutMillis: 30000, // Close idle clients after 30s so stale severed sockets aren't used
+  connectionTimeoutMillis: 15000,
 };
 
 // Enable SSL if using Neon PostgreSQL
@@ -25,6 +28,11 @@ if (dbUrl && (dbUrl.includes("neon.tech") || process.env.NODE_ENV === "productio
 }
 
 const pool = new Pool(poolConfig);
+
+// Handle idle client errors gracefully
+pool.on("error", (err) => {
+  console.error("Unexpected error on idle database client, discarding socket:", err.message);
+});
 
 const adapter = new PrismaPg(pool);
 
