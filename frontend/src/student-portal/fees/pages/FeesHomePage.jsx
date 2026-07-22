@@ -57,20 +57,27 @@ function FeesHomePage() {
 
       {/* Current Due + Progress */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
-        <CurrentDueCard currentDue={dashboard.currentDue} />
+        <CurrentDueCard currentDue={dashboard.currentDue} onPaymentSuccess={loadDashboard} />
 
         <FeeProgressCard dashboard={dashboard} />
       </div>
 
       {/* Navigation Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-8">
+        <div
+          onClick={() => navigate("/student/fees/ledger")}
+          className="bg-white rounded-xl shadow p-6 cursor-pointer hover:shadow-lg transition-all border border-indigo-100 hover:border-indigo-300"
+        >
+          <h2 className="text-xl font-semibold mb-2 text-indigo-700">My Ledger Statement</h2>
+          <p className="text-gray-500 text-sm">View complete double-entry debits, credits & balance</p>
+        </div>
+
         <div
           onClick={() => navigate("/student/fees/installments")}
           className="bg-white rounded-xl shadow p-6 cursor-pointer hover:shadow-lg transition-all"
         >
           <h2 className="text-xl font-semibold mb-2">Installments</h2>
-
-          <p className="text-gray-500">View semester wise fee installments</p>
+          <p className="text-gray-500 text-sm">View semester wise fee installments</p>
         </div>
 
         <div
@@ -78,17 +85,15 @@ function FeesHomePage() {
           className="bg-white rounded-xl shadow p-6 cursor-pointer hover:shadow-lg transition-all"
         >
           <h2 className="text-xl font-semibold mb-2">Payment History</h2>
-
-          <p className="text-gray-500">View all successful payments</p>
+          <p className="text-gray-500 text-sm">View all successful payments & modes</p>
         </div>
 
         <div
           onClick={() => navigate("/student/fees/receipts")}
           className="bg-white rounded-xl shadow p-6 cursor-pointer hover:shadow-lg transition-all"
         >
-          <h2 className="text-xl font-semibold mb-2">Receipts</h2>
-
-          <p className="text-gray-500">Download fee receipts</p>
+          <h2 className="text-xl font-semibold mb-2">Official Receipts</h2>
+          <p className="text-gray-500 text-sm">Download computerized PDF receipts</p>
         </div>
       </div>
     </div>

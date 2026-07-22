@@ -1,10 +1,13 @@
 import React, { ReactNode } from "react";
 import { Link, useLocation, useNavigate, Outlet } from "react-router-dom";
-import { Users, LogOut, LayoutDashboard } from "lucide-react";
+import { Users, LogOut, LayoutDashboard, DollarSign, Layers, Banknote } from "lucide-react";
 import { useAuthStore } from "../../shared/store/auth.store";
 
 const navItems = [
   { name: "Applications", href: "/admission/applications", icon: Users },
+  { name: "Financial Dashboard", href: "/admission/fees/dashboard", icon: DollarSign },
+  { name: "Fee Matrix Studio", href: "/admission/fees/matrix", icon: Layers },
+  { name: "Cashier Counter", href: "/admission/fees/collection", icon: Banknote },
 ];
 
 export default function AdmissionLayout() {

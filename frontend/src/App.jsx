@@ -31,6 +31,11 @@ import FeesHomePage from "./student-portal/fees/pages/FeesHomePage";
 import InstallmentsPage from "./student-portal/fees/pages/InstallmentsPage";
 import PaymentsPage from "./student-portal/fees/pages/PaymentsPage";
 import ReceiptsPage from "./student-portal/fees/pages/ReceiptsPage";
+import StudentLedgerPage from "./student-portal/fees/pages/StudentLedgerPage";
+
+import AdminFeesDashboard from "./admin-portal/fees/pages/AdminFeesDashboard";
+import FeeMatrixBillingStudio from "./admin-portal/fees/pages/FeeMatrixBillingStudio";
+import CashierCounterPortal from "./admin-portal/fees/pages/CashierCounterPortal";
 
 import AdmitCardPage from "./student-portal/exam/pages/AdmitCardPage";
 import ExamHomePage from "./student-portal/exam/pages/ExamHomePage";
@@ -88,6 +93,7 @@ function App() {
           <Route path="academic/feedback" element={<FeedbackPage />} />
           {/* Fees Routes */}
           <Route path="fees" element={<FeesHomePage />} />
+          <Route path="fees/ledger" element={<StudentLedgerPage />} />
           <Route path="fees/installments" element={<InstallmentsPage />} />
           <Route path="fees/payments" element={<PaymentsPage />} />
           <Route path="fees/receipts" element={<ReceiptsPage />} />
@@ -121,6 +127,9 @@ function App() {
           <Route path="dashboard" element={<Navigate to="/admission/applications" replace />} />
           <Route path="applications" element={<ManageApplications />} />
           <Route path="applications/:id" element={<ApplicationDetail />} />
+          <Route path="fees/dashboard" element={<AdminFeesDashboard />} />
+          <Route path="fees/matrix" element={<FeeMatrixBillingStudio />} />
+          <Route path="fees/collection" element={<CashierCounterPortal />} />
         </Route>
         <Route path="/admission/apply" element={<ApplyPage />} />
         <Route path="/admission/status" element={<StatusPage />} />
@@ -133,6 +142,30 @@ function App() {
               <div className="p-8">
                 <h1 className="text-2xl font-bold">Admin Dashboard</h1>
               </div>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/fees/dashboard"
+          element={
+            <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMISSION_OFFICER"]}>
+              <AdminFeesDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/fees/matrix"
+          element={
+            <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMISSION_OFFICER"]}>
+              <FeeMatrixBillingStudio />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/fees/collection"
+          element={
+            <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMISSION_OFFICER"]}>
+              <CashierCounterPortal />
             </ProtectedRoute>
           }
         />

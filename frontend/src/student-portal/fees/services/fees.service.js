@@ -21,9 +21,23 @@ export const feesService = {
     return response.data.data;
   },
 
+  getStudentLedger: async () => {
+    const response = await api.get("/fees/ledger");
+    return response.data.data;
+  },
+
+  getStudentInvoices: async () => {
+    const response = await api.get("/fees/invoices");
+    return response.data.data;
+  },
+
+  payOnline: async (data) => {
+    const response = await api.post("/fees/pay-online", data);
+    return response.data.data;
+  },
+
   downloadReceipt: async (receiptId) => {
     const response = await api.get(`/fees/receipt/${receiptId}`);
-
     return response.data;
   },
 };
