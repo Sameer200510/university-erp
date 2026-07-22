@@ -243,6 +243,7 @@ class LeadService {
     });
 
     try {
+      console.log(`[Email] Attempting to send approval credentials to ${lead.email}...`);
       await transporter.sendMail({
         from: process.env.GMAIL_USER ? `Admissions <${process.env.GMAIL_USER}>` : 'Admissions',
         to: lead.email,
@@ -261,11 +262,12 @@ class LeadService {
           </div>
         `,
       });
+      console.log(`[Email Success] Login credentials sent to ${lead.email}`);
     } catch (err) {
       console.error("Account generation or email failed non-fatally:", err);
     }
 
-    return updatedLead;
+    return { lead: updatedLead, erpId, tempPassword };
   }
 }
 

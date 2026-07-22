@@ -16,7 +16,7 @@ enum Role {
 model User {
   id             String          @id @default(uuid())
   loginId        String          @unique
-  email          String?         @unique
+  email          String?
   passwordHash   String
   role           Role
   isFirstLogin   Boolean         @default(true)

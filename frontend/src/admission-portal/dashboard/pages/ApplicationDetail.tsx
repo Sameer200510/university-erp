@@ -44,7 +44,12 @@ export default function ApplicationDetail() {
       } catch (e) {
         setApplicant({ ...applicant, status: "APPROVED" });
       }
-      toast.success("Admission officially approved! Student ERP credentials generated.");
+      const creds = res.data?.result;
+      if (creds && creds.erpId) {
+        toast.success(`🎉 Admission Approved! Email sent to ${applicant.email} | ERP ID: ${creds.erpId} | Password: ${creds.tempPassword}`, { duration: 15000 });
+      } else {
+        toast.success("Admission officially approved! Student ERP credentials generated.");
+      }
     } catch (err: any) {
       toast.error("Approval failed: " + (err.response?.data?.message || err.message));
     } finally {
