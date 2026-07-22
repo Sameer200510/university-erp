@@ -5,6 +5,7 @@ import { Toaster } from "sonner";
 import Login from "./auth/pages/Login";
 import ChangePassword from "./auth/pages/ChangePassword";
 import ProtectedRoute from "./shared/routes/ProtectedRoute";
+import { useAuthStore } from "./shared/store/auth.store";
 
 import StudentLayout from "./student-portal/layout/StudentLayout";
 
@@ -48,13 +49,25 @@ import RevaluationPage from "./student-portal/exam/pages/RevaluationPage";
 
 import CircularsPage from "./student-portal/circulars/pages/CircularsPage";
 
+function HomeRedirector() {
+  const { isAuthenticated, user } = useAuthStore();
+  if (!isAuthenticated || !user) {
+    return <Navigate to="/login" replace />;
+  }
+  if (user.role === "STUDENT") return <Navigate to="/student/dashboard" replace />;
+  if (user.role === "FINANCE_OFFICER") return <Navigate to="/finance/dashboard" replace />;
+  if (user.role === "ADMISSION_OFFICER" || user.role === "ADMISSION_ADMIN") return <Navigate to="/admission/applications" replace />;
+  if (user.role === "SUPER_ADMIN") return <Navigate to="/admin/dashboard" replace />;
+  return <Navigate to="/login" replace />;
+}
+
 function App() {
   return (
     <div className="App font-sans text-gray-900 bg-gray-50 min-h-screen">
       <Toaster position="top-right" richColors />
       <Routes>
         {/* Public Routes */}
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/" element={<HomeRedirector />} />
         <Route path="/login" element={<Login />} />
 
         {/* Change Password */}

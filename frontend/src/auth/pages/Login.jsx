@@ -41,8 +41,10 @@ const Login = () => {
       // Redirect based on role
       if (response.user.role === "STUDENT") {
         navigate("/student/dashboard");
+      } else if (response.user.role === "FINANCE_OFFICER") {
+        navigate("/finance/dashboard");
       } else if (response.user.role === "ADMISSION_OFFICER" || response.user.role === "ADMISSION_ADMIN") {
-        navigate("/admission/dashboard");
+        navigate("/admission/applications");
       } else if (response.user.role === "SUPER_ADMIN") {
         navigate("/admin/dashboard");
       } else {

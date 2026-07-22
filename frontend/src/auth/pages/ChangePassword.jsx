@@ -32,8 +32,9 @@ const ChangePassword = () => {
 
       // Redirect based on role
       if (user?.role === "STUDENT") navigate("/student/dashboard");
-      else if (user?.role === "ADMISSION_OFFICER")
-        navigate("/admission/dashboard");
+      else if (user?.role === "FINANCE_OFFICER") navigate("/finance/dashboard");
+      else if (user?.role === "ADMISSION_OFFICER" || user?.role === "ADMISSION_ADMIN")
+        navigate("/admission/applications");
       else if (user?.role === "SUPER_ADMIN") navigate("/admin/dashboard");
       else navigate("/");
     } catch (err) {
