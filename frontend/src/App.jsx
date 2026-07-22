@@ -118,7 +118,7 @@ function App() {
         <Route
           path="/admission"
           element={
-            <ProtectedRoute allowedRoles={["ADMISSION_OFFICER", "ADMISSION_ADMIN", "SUPER_ADMIN"]}>
+            <ProtectedRoute allowedRoles={["ADMISSION_OFFICER", "ADMISSION_ADMIN", "SUPER_ADMIN", "FINANCE_OFFICER"]}>
               <AdmissionLayout />
             </ProtectedRoute>
           }
@@ -145,10 +145,11 @@ function App() {
             </ProtectedRoute>
           }
         />
+        {/* Admin & Finance Portal Fee Routes */}
         <Route
           path="/admin/fees/dashboard"
           element={
-            <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMISSION_OFFICER"]}>
+            <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMISSION_OFFICER", "FINANCE_OFFICER"]}>
               <AdminFeesDashboard />
             </ProtectedRoute>
           }
@@ -156,7 +157,7 @@ function App() {
         <Route
           path="/admin/fees/matrix"
           element={
-            <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMISSION_OFFICER"]}>
+            <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMISSION_OFFICER", "FINANCE_OFFICER"]}>
               <FeeMatrixBillingStudio />
             </ProtectedRoute>
           }
@@ -164,11 +165,26 @@ function App() {
         <Route
           path="/admin/fees/collection"
           element={
-            <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMISSION_OFFICER"]}>
+            <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMISSION_OFFICER", "FINANCE_OFFICER"]}>
               <CashierCounterPortal />
             </ProtectedRoute>
           }
         />
+
+        {/* Dedicated Finance Officer Portal */}
+        <Route
+          path="/finance"
+          element={
+            <ProtectedRoute allowedRoles={["FINANCE_OFFICER", "SUPER_ADMIN"]}>
+              <AdmissionLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="" element={<Navigate to="/finance/dashboard" replace />} />
+          <Route path="dashboard" element={<AdminFeesDashboard />} />
+          <Route path="matrix" element={<FeeMatrixBillingStudio />} />
+          <Route path="collection" element={<CashierCounterPortal />} />
+        </Route>
 
         {/* Unauthorized */}
         <Route

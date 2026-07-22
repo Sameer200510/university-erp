@@ -3,11 +3,17 @@ import { Link, useLocation, useNavigate, Outlet } from "react-router-dom";
 import { Users, LogOut, LayoutDashboard, DollarSign, Layers, Banknote } from "lucide-react";
 import { useAuthStore } from "../../shared/store/auth.store";
 
-const navItems = [
+const defaultNavItems = [
   { name: "Applications", href: "/admission/applications", icon: Users },
   { name: "Financial Dashboard", href: "/admission/fees/dashboard", icon: DollarSign },
   { name: "Fee Matrix Studio", href: "/admission/fees/matrix", icon: Layers },
   { name: "Cashier Counter", href: "/admission/fees/collection", icon: Banknote },
+];
+
+const financeNavItems = [
+  { name: "Financial Dashboard", href: "/finance/dashboard", icon: DollarSign },
+  { name: "Fee Matrix Studio", href: "/finance/matrix", icon: Layers },
+  { name: "Cashier Counter", href: "/finance/collection", icon: Banknote },
 ];
 
 export default function AdmissionLayout() {
@@ -16,6 +22,11 @@ export default function AdmissionLayout() {
   const pathname = location.pathname;
   const logout = useAuthStore((state) => state.logout);
   const user = useAuthStore((state) => state.user);
+
+  const activeNavList =
+    user?.role === "FINANCE_OFFICER" || pathname.startsWith("/finance")
+      ? financeNavItems
+      : defaultNavItems;
 
   const handleLogout = () => {
     logout();
@@ -33,7 +44,7 @@ export default function AdmissionLayout() {
           </span>
         </div>
         <nav className="flex-1 space-y-2 px-4 py-6">
-          {navItems.map((item) => {
+          {activeNavList.map((item) => {
             const isActive = pathname.startsWith(item.href);
             return (
               <Link key={item.name} to={item.href}>
@@ -71,7 +82,7 @@ export default function AdmissionLayout() {
         <header className="flex h-16 items-center justify-between border-b border-border bg-black/5 backdrop-blur-md px-6">
           <div className="flex items-center gap-4">
             <h1 className="text-lg font-semibold text-foreground">
-              {navItems.find((n) => pathname.startsWith(n.href))?.name || "Portal"}
+              {activeNavList.find((n) => pathname.startsWith(n.href))?.name || "Portal"}
             </h1>
           </div>
           <div className="flex items-center gap-4">

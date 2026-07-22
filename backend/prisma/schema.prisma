@@ -9,6 +9,7 @@ datasource db {
 enum Role {
   SUPER_ADMIN
   ADMISSION_OFFICER
+  FINANCE_OFFICER
   STUDENT
 }
 
