@@ -1,19 +1,25 @@
 import React, { ReactNode } from "react";
 import { Link, useLocation, useNavigate, Outlet } from "react-router-dom";
-import { Users, LogOut, LayoutDashboard, DollarSign, Layers, Banknote } from "lucide-react";
+import { Users, LogOut, LayoutDashboard, DollarSign, Layers, Banknote, UserCheck } from "lucide-react";
 import { useAuthStore } from "../../shared/store/auth.store";
 
-const defaultNavItems = [
+const admissionOfficerNavItems = [
   { name: "Applications", href: "/admission/applications", icon: Users },
-  { name: "Financial Dashboard", href: "/admission/fees/dashboard", icon: DollarSign },
-  { name: "Fee Matrix Studio", href: "/admission/fees/matrix", icon: Layers },
-  { name: "Cashier Counter", href: "/admission/fees/collection", icon: Banknote },
+  { name: "Fee Due Verification", href: "/admission/fees/status", icon: UserCheck },
 ];
 
 const financeNavItems = [
   { name: "Financial Dashboard", href: "/finance/dashboard", icon: DollarSign },
   { name: "Fee Matrix Studio", href: "/finance/matrix", icon: Layers },
   { name: "Cashier Counter", href: "/finance/collection", icon: Banknote },
+];
+
+const superAdminNavItems = [
+  { name: "Applications", href: "/admission/applications", icon: Users },
+  { name: "Fee Due Verification", href: "/admission/fees/status", icon: UserCheck },
+  { name: "Financial Dashboard", href: "/admission/fees/dashboard", icon: DollarSign },
+  { name: "Fee Matrix Studio", href: "/admission/fees/matrix", icon: Layers },
+  { name: "Cashier Counter", href: "/admission/fees/collection", icon: Banknote },
 ];
 
 export default function AdmissionLayout() {
@@ -26,7 +32,9 @@ export default function AdmissionLayout() {
   const activeNavList =
     user?.role === "FINANCE_OFFICER" || pathname.startsWith("/finance")
       ? financeNavItems
-      : defaultNavItems;
+      : user?.role === "ADMISSION_OFFICER" || user?.role === "ADMISSION_ADMIN"
+      ? admissionOfficerNavItems
+      : superAdminNavItems;
 
   const handleLogout = () => {
     logout();

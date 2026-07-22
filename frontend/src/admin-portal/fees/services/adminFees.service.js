@@ -57,3 +57,5 @@ export const adminFeesService = {
     return response.data.data;
   },
 };
+
+export default adminFeesService;

@@ -36,6 +36,7 @@ import StudentLedgerPage from "./student-portal/fees/pages/StudentLedgerPage";
 import AdminFeesDashboard from "./admin-portal/fees/pages/AdminFeesDashboard";
 import FeeMatrixBillingStudio from "./admin-portal/fees/pages/FeeMatrixBillingStudio";
 import CashierCounterPortal from "./admin-portal/fees/pages/CashierCounterPortal";
+import StudentDueStatusLookup from "./admission-portal/fees/pages/StudentDueStatusLookup";
 
 import AdmitCardPage from "./student-portal/exam/pages/AdmitCardPage";
 import ExamHomePage from "./student-portal/exam/pages/ExamHomePage";
@@ -127,9 +128,31 @@ function App() {
           <Route path="dashboard" element={<Navigate to="/admission/applications" replace />} />
           <Route path="applications" element={<ManageApplications />} />
           <Route path="applications/:id" element={<ApplicationDetail />} />
-          <Route path="fees/dashboard" element={<AdminFeesDashboard />} />
-          <Route path="fees/matrix" element={<FeeMatrixBillingStudio />} />
-          <Route path="fees/collection" element={<CashierCounterPortal />} />
+          <Route path="fees/status" element={<StudentDueStatusLookup />} />
+          <Route
+            path="fees/dashboard"
+            element={
+              <ProtectedRoute allowedRoles={["SUPER_ADMIN", "FINANCE_OFFICER"]}>
+                <AdminFeesDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="fees/matrix"
+            element={
+              <ProtectedRoute allowedRoles={["SUPER_ADMIN", "FINANCE_OFFICER"]}>
+                <FeeMatrixBillingStudio />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="fees/collection"
+            element={
+              <ProtectedRoute allowedRoles={["SUPER_ADMIN", "FINANCE_OFFICER"]}>
+                <CashierCounterPortal />
+              </ProtectedRoute>
+            }
+          />
         </Route>
         <Route path="/admission/apply" element={<ApplyPage />} />
         <Route path="/admission/status" element={<StatusPage />} />
