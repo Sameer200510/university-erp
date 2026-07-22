@@ -53,6 +53,13 @@ model StudentProfile {
 
   photoUrl String?
 
+  quota    String? @default("MERIT")      // MERIT | MANAGEMENT | NRI | SPORTS
+  category String? @default("GENERAL")    // GENERAL | OBC | SC | ST
+  batch    String? @default("2024-2028")
+
+  feeInvoices    FeeInvoice[]
+  studentLedgers StudentLedger[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -484,5 +491,103 @@ model AuditLog {
   newValue    String?
   ipAddress   String?
   createdAt   DateTime @default(now())
+}
+
+model FeeHead {
+  id            String           @id @default(uuid())
+  code          String           @unique // TUITION, TRANSPORT, LAB, LIBRARY, LATE_FEE, CHEQUE_BOUNCE
+  name          String
+  description   String?
+  isRecurring   Boolean          @default(true)
+  defaultAmount Float            @default(0)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  matrixEntries FeeMatrix[]
+  invoiceItems  FeeInvoiceItem[]
+}
+
+model FeeMatrix {
+  id        String   @id @default(uuid())
+  courseId  String   // e.g., B.Tech CSE
+  batch     String   // e.g., 2024-2028
+  quota     String   // MERIT | MANAGEMENT | NRI | SPORTS
+  semester  Int
+  feeHeadId String
+  feeHead   FeeHead  @relation(fields: [feeHeadId], references: [id])
+  amount    Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([courseId, batch, quota, semester, feeHeadId])
+}
+
+model FeeInvoice {
+  id             String           @id @default(uuid())
+  invoiceNo      String           @unique // INV-2026-0001
+  studentId      String
+  student        StudentProfile   @relation(fields: [studentId], references: [id])
+  semester       Int
+  totalAmount    Float
+  discountAmount Float            @default(0)
+  netAmount      Float
+  paidAmount     Float            @default(0)
+  status         String           @default("PENDING") // PENDING, PARTIAL, PAID, OVERDUE, CANCELLED
+  dueDate        DateTime
+  items          FeeInvoiceItem[]
+  transactions   FeeTransaction[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+}
+
+model FeeInvoiceItem {
+  id          String     @id @default(uuid())
+  invoiceId   String
+  invoice     FeeInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  feeHeadId   String
+  feeHead     FeeHead    @relation(fields: [feeHeadId], references: [id])
+  amount      Float
+  description String?
+}
+
+model StudentLedger {
+  id              String         @id @default(uuid())
+  studentId       String
+  student         StudentProfile @relation(fields: [studentId], references: [id])
+  transactionDate DateTime       @default(now())
+  type            String         // DEBIT | CREDIT
+  amount          Float
+  referenceId     String?        // Invoice ID or Transaction ID
+  referenceType   String?        // INVOICE | PAYMENT | PENALTY | WAIVER | CHEQUE_BOUNCE
+  description     String
+  balanceAfter    Float
+}
+
+model FeeTransaction {
+  id               String     @id @default(uuid())
+  transactionNo    String     @unique // TXN-2026-0001
+  invoiceId        String
+  invoice          FeeInvoice @relation(fields: [invoiceId], references: [id])
+  studentId        String
+  amount           Float
+  paymentMode      String     // ONLINE_RAZORPAY | ONLINE_STRIPE | ONLINE_UPI | OFFLINE_CASH | OFFLINE_CHEQUE | OFFLINE_DD
+  gatewayTxnId     String?
+  chequeOrDdNumber String?
+  bankName         String?
+  chequeDate       DateTime?
+  status           String     @default("SUCCESS") // SUCCESS, PENDING, BOUNCED, REVERSED
+  collectedBy      String?    // Admin/Cashier userId or "ONLINE"
+  paidAt           DateTime   @default(now())
+  receiptNumber    String?    @unique // REC-2026-0001
+  pdfUrl           String?
+}
+
+model GeneralLedger {
+  id          String   @id @default(uuid())
+  postingDate DateTime @default(now())
+  accountHead String   // BANK_ACCOUNT, CASH_IN_HAND, TUITION_REVENUE, TRANSPORT_REVENUE, LAB_REVENUE, PENALTY_REVENUE, ACCOUNTS_RECEIVABLE
+  debit       Float    @default(0)
+  credit      Float    @default(0)
+  referenceId String?
+  description String
 }
 

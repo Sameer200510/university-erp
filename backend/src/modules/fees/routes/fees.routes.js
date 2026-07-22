@@ -1,18 +1,108 @@
 const express = require("express");
-
 const { verifyToken } = require("../../../middleware/auth.middleware");
-
 const { authorizeRole } = require("../../../middleware/role.middleware");
-
 const feesController = require("../controllers/fees.controller");
 
 const router = express.Router();
 
+// ================= ADMIN / CASHIER / ACCOUNTS ROUTES =================
+router.get(
+  "/admin/dashboard",
+  verifyToken,
+  authorizeRole("SUPER_ADMIN", "ADMISSION_OFFICER"),
+  feesController.getAdminDashboard,
+);
+
+router.get(
+  "/admin/heads",
+  verifyToken,
+  authorizeRole("SUPER_ADMIN", "ADMISSION_OFFICER"),
+  feesController.getFeeHeads,
+);
+
+router.post(
+  "/admin/heads",
+  verifyToken,
+  authorizeRole("SUPER_ADMIN", "ADMISSION_OFFICER"),
+  feesController.createFeeHead,
+);
+
+router.get(
+  "/admin/matrix",
+  verifyToken,
+  authorizeRole("SUPER_ADMIN", "ADMISSION_OFFICER"),
+  feesController.getFeeMatrix,
+);
+
+router.post(
+  "/admin/matrix",
+  verifyToken,
+  authorizeRole("SUPER_ADMIN", "ADMISSION_OFFICER"),
+  feesController.saveFeeMatrixRule,
+);
+
+router.post(
+  "/admin/invoice/generate",
+  verifyToken,
+  authorizeRole("SUPER_ADMIN", "ADMISSION_OFFICER"),
+  feesController.generateSemesterInvoices,
+);
+
+router.post(
+  "/admin/collect-offline",
+  verifyToken,
+  authorizeRole("SUPER_ADMIN", "ADMISSION_OFFICER"),
+  feesController.collectOfflinePayment,
+);
+
+router.post(
+  "/admin/transaction/:id/bounce",
+  verifyToken,
+  authorizeRole("SUPER_ADMIN", "ADMISSION_OFFICER"),
+  feesController.markChequeBounce,
+);
+
+router.post(
+  "/admin/dunning/apply-late-fees",
+  verifyToken,
+  authorizeRole("SUPER_ADMIN", "ADMISSION_OFFICER"),
+  feesController.applyLateFees,
+);
+
+router.post(
+  "/admin/dunning/send-reminders",
+  verifyToken,
+  authorizeRole("SUPER_ADMIN", "ADMISSION_OFFICER"),
+  feesController.sendReminders,
+);
+
+// ================= STUDENT PORTAL ROUTES =================
 router.get(
   "/dashboard",
   verifyToken,
   authorizeRole("STUDENT"),
   feesController.getDashboard,
+);
+
+router.get(
+  "/ledger",
+  verifyToken,
+  authorizeRole("STUDENT"),
+  feesController.getStudentLedger,
+);
+
+router.get(
+  "/invoices",
+  verifyToken,
+  authorizeRole("STUDENT"),
+  feesController.getStudentInvoices,
+);
+
+router.post(
+  "/pay-online",
+  verifyToken,
+  authorizeRole("STUDENT"),
+  feesController.payOnline,
 );
 
 router.get(
@@ -39,7 +129,7 @@ router.get(
 router.get(
   "/receipt/:receiptId",
   verifyToken,
-  authorizeRole("STUDENT"),
+  authorizeRole("STUDENT", "SUPER_ADMIN", "ADMISSION_OFFICER"),
   feesController.downloadReceipt,
 );
 
