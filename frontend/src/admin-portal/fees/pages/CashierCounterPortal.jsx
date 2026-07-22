@@ -38,7 +38,7 @@ export default function CashierCounterPortal() {
   const [bounceFine, setBounceFine] = useState(1000);
   const [bouncingId, setBouncingId] = useState(null);
 
-  // Admission Reference Payment state
+  // Admission Reference Payment state & Receipt modal
   const [admissionPayForm, setAdmissionPayForm] = useState({
     referenceId: "",
     amount: "1500",
@@ -46,6 +46,32 @@ export default function CashierCounterPortal() {
     transactionRef: "",
   });
   const [admissionPayLoading, setAdmissionPayLoading] = useState(false);
+  const [admissionReceipt, setAdmissionReceipt] = useState(null);
+
+  const handleLookupAdmissionReceipt = async () => {
+    if (!admissionPayForm.referenceId) {
+      return toast.error("Please enter the Admission Reference_ID to lookup receipt");
+    }
+    try {
+      setAdmissionPayLoading(true);
+      const res = await api.get(`/leads/${admissionPayForm.referenceId}`);
+      const lead = res.data.lead;
+      if (!lead) return toast.error("No admission application found with this Reference_ID");
+      if (!lead.payment || (lead.payment.status !== "PAID" && lead.payment.status !== "SUCCESS")) {
+        return toast.error("Fee payment is still UNPAID for this Reference_ID. Please submit payment first.");
+      }
+      setAdmissionReceipt({
+        lead,
+        payment: lead.payment,
+        receiptNo: `ADM-REC-${new Date().getFullYear()}-${lead.payment.id ? lead.payment.id.slice(0, 6).toUpperCase() : Math.floor(1000 + Math.random() * 9000)}`
+      });
+      toast.success("Existing fee receipt loaded!");
+    } catch (err) {
+      toast.error(err.response?.data?.message || err.message || "Failed to lookup admission receipt");
+    } finally {
+      setAdmissionPayLoading(false);
+    }
+  };
 
   const handleAdmissionPaymentSubmit = async (e) => {
     e.preventDefault();
@@ -54,13 +80,26 @@ export default function CashierCounterPortal() {
     }
     try {
       setAdmissionPayLoading(true);
-      await api.post("/leads/finance/process-payment", {
+      const res = await api.post("/leads/finance/process-payment", {
         referenceId: admissionPayForm.referenceId,
         amount: Number(admissionPayForm.amount) || 1500,
         paymentMode: admissionPayForm.paymentMode,
         transactionRef: admissionPayForm.transactionRef,
       });
       toast.success("Mandatory Fee marked PAID for Reference_ID: " + admissionPayForm.referenceId);
+      if (res.data && res.data.lead && res.data.payment) {
+        setAdmissionReceipt({
+          lead: res.data.lead,
+          payment: res.data.payment,
+          receiptNo: `ADM-REC-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`
+        });
+      } else {
+        setAdmissionReceipt({
+          lead: { id: admissionPayForm.referenceId, firstName: "Admission", lastName: "Applicant", email: "Verified at Counter", phone: "Verified", courseId: "Applied Program" },
+          payment: { amount: Number(admissionPayForm.amount) || 1500, status: "PAID", paymentMode: admissionPayForm.paymentMode, transactionRef: admissionPayForm.transactionRef || "COUNTER-PAID", paidAt: new Date().toISOString() },
+          receiptNo: `ADM-REC-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`
+        });
+      }
       setAdmissionPayForm({ referenceId: "", amount: "1500", paymentMode: "CASH", transactionRef: "" });
     } catch (err) {
       toast.error(err.response?.data?.message || err.message || "Failed to process admission fee payment");
@@ -516,15 +555,185 @@ export default function CashierCounterPortal() {
               />
             </div>
 
-            <button
-              type="submit"
-              disabled={admissionPayLoading}
-              className="w-full py-3.5 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-2"
-            >
-              <CheckCircle className="h-5 w-5" />
-              {admissionPayLoading ? "Processing Fee..." : "Submit Fee Payment & Clear Reference_ID"}
-            </button>
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              <button
+                type="submit"
+                disabled={admissionPayLoading}
+                className="flex-1 py-3.5 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-2"
+              >
+                <CheckCircle className="h-5 w-5" />
+                {admissionPayLoading ? "Processing Fee..." : "Submit Fee Payment & Print Receipt"}
+              </button>
+              <button
+                type="button"
+                onClick={handleLookupAdmissionReceipt}
+                disabled={admissionPayLoading || !admissionPayForm.referenceId}
+                className="px-6 py-3.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold transition-all flex items-center justify-center gap-2 border border-slate-300 disabled:opacity-50"
+              >
+                <Printer className="h-5 w-5 text-indigo-600" />
+                Lookup & Reprint Receipt
+              </button>
+            </div>
           </form>
+        </div>
+      )}
+
+      {/* Official Admission Fee Computerized Receipt Modal */}
+      {admissionReceipt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in duration-200">
+          <style>{`
+            @media print {
+              body * {
+                visibility: hidden !important;
+              }
+              #admission-official-receipt, #admission-official-receipt * {
+                visibility: visible !important;
+              }
+              #admission-official-receipt {
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                margin: 0 !important;
+                padding: 30px !important;
+                box-shadow: none !important;
+                border: none !important;
+                background: white !important;
+              }
+              .print-hide-btn {
+                display: none !important;
+              }
+            }
+          `}</style>
+
+          <div
+            id="admission-official-receipt"
+            className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200 p-8 space-y-6 relative max-h-[90vh] overflow-y-auto print:max-h-none print:overflow-visible"
+          >
+            {/* Action buttons (hidden in print) */}
+            <div className="flex justify-between items-center pb-4 border-b border-slate-100 print-hide-btn sticky top-0 bg-white z-10">
+              <span className="bg-emerald-100 text-emerald-800 text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider">
+                Official Computerized Receipt
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm flex items-center gap-2 shadow transition"
+                >
+                  <Printer className="h-4 w-4" /> Print / Save PDF
+                </button>
+                <button
+                  onClick={() => setAdmissionReceipt(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            {/* University Header */}
+            <div className="text-center space-y-1">
+              <h1 className="text-2xl font-black text-slate-900 tracking-tight">GRAPHIC ERA (DEEMED TO BE UNIVERSITY)</h1>
+              <p className="text-xs font-semibold text-slate-500">566/6, Bell Road, Clement Town, Dehradun, Uttarakhand - 248002</p>
+              <div className="pt-2">
+                <span className="inline-block px-4 py-1 bg-slate-900 text-white text-xs font-black uppercase tracking-widest rounded">
+                  Admission Application Fee Receipt
+                </span>
+              </div>
+            </div>
+
+            {/* Receipt Metadata */}
+            <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700">
+              <div>
+                <span className="text-slate-400 block uppercase font-bold">Receipt Number</span>
+                <span className="font-mono font-black text-indigo-700 text-sm">{admissionReceipt.receiptNo}</span>
+              </div>
+              <div className="text-right">
+                <span className="text-slate-400 block uppercase font-bold">Date & Time</span>
+                <span className="font-bold text-slate-900">
+                  {new Date(admissionReceipt.payment?.paidAt || Date.now()).toLocaleString("en-IN")}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block uppercase font-bold mt-2">Reference ID</span>
+                <span className="font-mono font-extrabold text-slate-900">
+                  {admissionReceipt.lead?.id}
+                </span>
+              </div>
+              <div className="text-right">
+                <span className="text-slate-400 block uppercase font-bold mt-2">Payment Status</span>
+                <span className="text-emerald-600 font-black tracking-wide">VERIFIED & PAID</span>
+              </div>
+            </div>
+
+            {/* Applicant Details */}
+            <div>
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Student & Application Particulars</h3>
+              <div className="border rounded-xl divide-y divide-slate-100 text-sm">
+                <div className="grid grid-cols-3 p-3 font-semibold">
+                  <span className="text-slate-500">Applicant Name</span>
+                  <span className="col-span-2 font-bold text-slate-900">
+                    {admissionReceipt.lead?.firstName} {admissionReceipt.lead?.lastName}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 p-3 font-semibold">
+                  <span className="text-slate-500">Contact Email</span>
+                  <span className="col-span-2 text-slate-800">{admissionReceipt.lead?.email}</span>
+                </div>
+                <div className="grid grid-cols-3 p-3 font-semibold">
+                  <span className="text-slate-500">Contact Phone</span>
+                  <span className="col-span-2 text-slate-800">{admissionReceipt.lead?.phone}</span>
+                </div>
+                <div className="grid grid-cols-3 p-3 font-semibold bg-slate-50">
+                  <span className="text-slate-500">Program Applied</span>
+                  <span className="col-span-2 font-black text-indigo-900">
+                    {admissionReceipt.lead?.courseId || "B.Tech / Program Application"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Fee Breakdown Table */}
+            <div>
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Payment Summary</h3>
+              <div className="border rounded-xl overflow-hidden text-sm">
+                <div className="bg-slate-100 p-3 flex justify-between font-bold text-slate-700 text-xs uppercase">
+                  <span>Description</span>
+                  <span>Amount (INR)</span>
+                </div>
+                <div className="p-4 flex justify-between font-bold text-slate-900 border-b">
+                  <span>Mandatory University Application & Processing Fee</span>
+                  <span className="font-extrabold">₹ {Number(admissionReceipt.payment?.amount || 1500).toLocaleString("en-IN")}</span>
+                </div>
+                <div className="bg-emerald-50/50 p-4 flex justify-between items-center">
+                  <div>
+                    <span className="font-extrabold text-slate-900 block text-base">Total Amount Paid</span>
+                    <span className="text-xs text-slate-500 font-semibold">
+                      Mode: <strong className="text-slate-800">{admissionReceipt.payment?.paymentMode || "CASH"}</strong>
+                      {admissionReceipt.payment?.transactionRef && ` | Ref: ${admissionReceipt.payment.transactionRef}`}
+                    </span>
+                  </div>
+                  <span className="text-xl font-black text-emerald-700">
+                    ₹ {Number(admissionReceipt.payment?.amount || 1500).toLocaleString("en-IN")}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer / Signatures */}
+            <div className="pt-8 flex justify-between items-end border-t border-slate-100 text-xs font-semibold text-slate-500">
+              <div>
+                <p className="text-slate-400">Computer generated official receipt.</p>
+                <p>Graphic Era ERP Admissions System</p>
+              </div>
+              <div className="text-center pr-4">
+                <div className="w-40 border-b-2 border-slate-400 mb-1 pb-4"></div>
+                <span className="font-bold text-slate-800">Authorized Cashier / Finance Officer</span>
+                <p className="text-[10px] text-slate-400">Graphic Era Dehradun</p>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
