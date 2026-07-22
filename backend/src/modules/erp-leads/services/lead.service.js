@@ -19,6 +19,7 @@ class LeadService {
         email: data.email,
         phone: data.phone,
         courseId: data.courseId,
+        status: 'PENDING_PAYMENT',
         payment: {
           create: { amount: 1500, status: 'PENDING' }
         }
@@ -78,20 +79,82 @@ class LeadService {
       data: { status }
     });
 
+    // If status becomes PAID, update lead status accordingly
+    if (status === 'PAID' || status === 'SUCCESS') {
+      await prisma.admissionLead.update({
+        where: { id: lead.id },
+        data: { status: 'PAID' }
+      });
+    }
+
     // Audit Log
-    await prisma.auditLog.create({
-      data: {
-        userId: adminId,
-        action: 'UPDATE_PAYMENT_STATUS',
-        entityType: 'Payment',
-        entityId: payment.id,
-        oldValue: oldStatus,
-        newValue: status,
-        ipAddress: ipAddress || null
-      }
-    });
+    if (adminId) {
+      await prisma.auditLog.create({
+        data: {
+          userId: adminId,
+          action: 'UPDATE_PAYMENT_STATUS',
+          entityType: 'Payment',
+          entityId: payment.id,
+          oldValue: oldStatus,
+          newValue: status,
+          ipAddress: ipAddress || null
+        }
+      });
+    }
 
     return updatedPayment;
+  }
+
+  async processFinancePayment(referenceId, paymentData = {}, adminId, ipAddress) {
+    const lead = await this.getLeadById(referenceId);
+    if (!lead) throw new Error('Admission application / Reference_ID not found');
+
+    let payment = await prisma.payment.findUnique({ where: { admissionLeadId: lead.id } });
+    const oldStatus = payment ? payment.status : 'UNPAID';
+
+    if (!payment) {
+      payment = await prisma.payment.create({
+        data: {
+          amount: paymentData.amount || 1500,
+          status: 'PAID',
+          paymentMode: paymentData.paymentMode || 'CASH',
+          transactionRef: paymentData.transactionRef || null,
+          paidAt: new Date(),
+          admissionLeadId: lead.id,
+        }
+      });
+    } else {
+      payment = await prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+          status: 'PAID',
+          paymentMode: paymentData.paymentMode || 'CASH',
+          transactionRef: paymentData.transactionRef || null,
+          paidAt: new Date(),
+        }
+      });
+    }
+
+    const updatedLead = await prisma.admissionLead.update({
+      where: { id: lead.id },
+      data: { status: 'PAID' }
+    });
+
+    if (adminId) {
+      await prisma.auditLog.create({
+        data: {
+          userId: adminId,
+          action: 'PROCESS_FINANCE_FEE_PAYMENT',
+          entityType: 'Payment',
+          entityId: payment.id,
+          oldValue: oldStatus,
+          newValue: 'PAID',
+          ipAddress: ipAddress || null
+        }
+      });
+    }
+
+    return { lead: updatedLead, payment };
   }
 
   async updateStatus(leadId, status, adminId, ipAddress) {
@@ -124,6 +187,11 @@ class LeadService {
   async approveLead(leadId, adminId, ipAddress) {
     const lead = await this.getLeadById(leadId);
     if (!lead) throw new Error('Lead not found');
+
+    // Mandatory Fee Payment Check
+    if (!lead.payment || (lead.payment.status !== 'PAID' && lead.payment.status !== 'SUCCESS')) {
+      throw new Error(`Admission approval denied: Mandatory Fee Payment is UNPAID (or Pending) for Reference_ID ${lead.id || leadId}. The student must complete payment at the Finance Office before admission can be approved.`);
+    }
 
     const updatedLead = await prisma.admissionLead.update({
       where: { id: lead.id },

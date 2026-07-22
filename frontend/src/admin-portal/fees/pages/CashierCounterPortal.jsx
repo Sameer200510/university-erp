@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { adminFeesService } from "../services/adminFees.service";
 import { feesService } from "../../../student-portal/fees/services/fees.service";
+import api from "../../../auth/services/auth.service";
 
 export default function CashierCounterPortal() {
   const [activeTab, setActiveTab] = useState("collection"); // 'collection' | 'bounce'
@@ -36,6 +37,37 @@ export default function CashierCounterPortal() {
   // Cheque Bounce state
   const [bounceFine, setBounceFine] = useState(1000);
   const [bouncingId, setBouncingId] = useState(null);
+
+  // Admission Reference Payment state
+  const [admissionPayForm, setAdmissionPayForm] = useState({
+    referenceId: "",
+    amount: "1500",
+    paymentMode: "CASH",
+    transactionRef: "",
+  });
+  const [admissionPayLoading, setAdmissionPayLoading] = useState(false);
+
+  const handleAdmissionPaymentSubmit = async (e) => {
+    e.preventDefault();
+    if (!admissionPayForm.referenceId) {
+      return toast.error("Please enter the Admission Reference_ID");
+    }
+    try {
+      setAdmissionPayLoading(true);
+      await api.post("/leads/finance/process-payment", {
+        referenceId: admissionPayForm.referenceId,
+        amount: Number(admissionPayForm.amount) || 1500,
+        paymentMode: admissionPayForm.paymentMode,
+        transactionRef: admissionPayForm.transactionRef,
+      });
+      toast.success("Mandatory Fee marked PAID for Reference_ID: " + admissionPayForm.referenceId);
+      setAdmissionPayForm({ referenceId: "", amount: "1500", paymentMode: "CASH", transactionRef: "" });
+    } catch (err) {
+      toast.error(err.response?.data?.message || err.message || "Failed to process admission fee payment");
+    } finally {
+      setAdmissionPayLoading(false);
+    }
+  };
 
   useEffect(() => {
     loadData();
@@ -144,6 +176,14 @@ export default function CashierCounterPortal() {
             }`}
           >
             Counter Collection
+          </button>
+          <button
+            onClick={() => setActiveTab("admission_pay")}
+            className={`px-4 py-2 rounded-lg font-bold text-sm transition ${
+              activeTab === "admission_pay" ? "bg-indigo-600 text-white shadow" : "text-slate-300 hover:text-white"
+            }`}
+          >
+            Admission Reference Pay
           </button>
           <button
             onClick={() => setActiveTab("bounce")}
@@ -411,6 +451,80 @@ export default function CashierCounterPortal() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {activeTab === "admission_pay" && (
+        <div className="max-w-2xl mx-auto bg-white p-8 rounded-2xl border border-slate-200 shadow-lg space-y-6 animate-in fade-in duration-300">
+          <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+            <div className="h-12 w-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+              <CreditCard className="h-6 w-6" />
+            </div>
+            <div>
+              <h2 className="text-xl font-extrabold text-slate-900">Admission Fee Payment Counter</h2>
+              <p className="text-xs text-slate-500">Process mandatory application fee by Reference_ID before Admission Officer approval.</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleAdmissionPaymentSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Student Reference_ID</label>
+              <input
+                type="text"
+                placeholder="Enter 8-digit or full Reference_ID (e.g. c7438e...)"
+                value={admissionPayForm.referenceId}
+                onChange={(e) => setAdmissionPayForm({ ...admissionPayForm, referenceId: e.target.value })}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Fee Amount (₹)</label>
+                <input
+                  type="number"
+                  value={admissionPayForm.amount}
+                  onChange={(e) => setAdmissionPayForm({ ...admissionPayForm, amount: e.target.value })}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-semibold text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Payment Mode</label>
+                <select
+                  value={admissionPayForm.paymentMode}
+                  onChange={(e) => setAdmissionPayForm({ ...admissionPayForm, paymentMode: e.target.value })}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-semibold text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="CASH">Cash at Counter</option>
+                  <option value="CARD">POS / Debit / Credit Card</option>
+                  <option value="UPI">UPI / QR Code Scan</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Transaction Ref / Receipt No (Optional)</label>
+              <input
+                type="text"
+                placeholder="e.g. TXN-9823471 or Receipt No"
+                value={admissionPayForm.transactionRef}
+                onChange={(e) => setAdmissionPayForm({ ...admissionPayForm, transactionRef: e.target.value })}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={admissionPayLoading}
+              className="w-full py-3.5 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-2"
+            >
+              <CheckCircle className="h-5 w-5" />
+              {admissionPayLoading ? "Processing Fee..." : "Submit Fee Payment & Clear Reference_ID"}
+            </button>
+          </form>
         </div>
       )}
     </div>

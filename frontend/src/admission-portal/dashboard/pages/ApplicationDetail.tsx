@@ -28,52 +28,55 @@ export default function ApplicationDetail() {
     if (params.id) fetchLead();
   }, [params.id]);
 
-  async function handleApprove() {
-    setIsProcessing(true);
-    try {
-      const res = await api.put(`/leads/${params.id}/status`, { status: 'PAYMENT_PENDING' });
-      setApplicant({ ...applicant, status: "PAYMENT_PENDING" });
-      toast.success("Applicant documents verified successfully! Awaiting payment.");
-    } catch (err) {
-      toast.error("Failed to verify documents: " + (err.response?.data?.message || err.message));
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+  const isFeePaid = applicant?.payment?.status === 'PAID' || applicant?.payment?.status === 'SUCCESS' || applicant?.status === 'PAID';
 
-  async function handleReject() {
-    setIsProcessing(true);
-    try {
-      const res = await api.put(`/leads/${params.id}/status`, { status: 'REJECTED' });
-      setApplicant({ ...applicant, status: "REJECTED" });
-      toast.error("Application rejected.");
-    } catch (err) {
-      toast.error("Failed to reject application.");
-    } finally {
-      setIsProcessing(false);
+  async function handleApproveFinalAdmission() {
+    if (!isFeePaid) {
+      toast.error("Admission approval blocked: Mandatory Fee Payment is UNPAID. Student must pay at Finance Office first.");
+      return;
     }
-  };
-
-  async function handlePaymentCompleted() {
     setIsProcessing(true);
     try {
       const res = await api.post(`/leads/${params.id}/approve`);
-      
-      // Refetch to get the newly generated Student Profile (ERP ID)
       try {
         const freshRes = await api.get(`/leads/${params.id}`);
         setApplicant(freshRes.data.lead);
       } catch (e) {
         setApplicant({ ...applicant, status: "APPROVED" });
       }
-      
-      toast.success("Payment marked as complete! Enrollment details sent to student.");
-    } catch (err) {
-      toast.error("Failed to mark payment as complete: " + (err.response?.data?.message || err.message));
+      toast.success("Admission officially approved! Student ERP credentials generated.");
+    } catch (err: any) {
+      toast.error("Approval failed: " + (err.response?.data?.message || err.message));
     } finally {
       setIsProcessing(false);
     }
-  };
+  }
+
+  async function handleVerifyDocs() {
+    setIsProcessing(true);
+    try {
+      await api.put(`/leads/${params.id}/status`, { status: 'PENDING_PAYMENT' });
+      setApplicant({ ...applicant, status: "PENDING_PAYMENT" });
+      toast.success("Documents verified! Application marked as 'Pending Payment' for Finance Office.");
+    } catch (err: any) {
+      toast.error("Failed to update status: " + (err.response?.data?.message || err.message));
+    } finally {
+      setIsProcessing(false);
+    }
+  }
+
+  async function handleReject() {
+    setIsProcessing(true);
+    try {
+      await api.put(`/leads/${params.id}/status`, { status: 'REJECTED' });
+      setApplicant({ ...applicant, status: "REJECTED" });
+      toast.error("Application rejected.");
+    } catch (err: any) {
+      toast.error("Failed to reject application.");
+    } finally {
+      setIsProcessing(false);
+    }
+  }
 
   if (isLoading) return <div className="text-foreground text-center mt-10">Loading applicant details...</div>;
   if (!applicant) return <div className="text-foreground text-center mt-10">Applicant not found.</div>;
@@ -125,26 +128,59 @@ export default function ApplicationDetail() {
 
           <Card className="bg-card border-border backdrop-blur-lg">
             <CardHeader>
-              <CardTitle className="text-foreground">Actions</CardTitle>
-              <CardDescription className="text-muted-foreground">Current Status: {applicant.status}</CardDescription>
+              <CardTitle className="text-foreground">Admission Actions</CardTitle>
+              <CardDescription className="text-muted-foreground">Current Status: <span className="font-semibold text-primary">{applicant.status}</span></CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <Button 
-                onClick={handleApprove} 
-                disabled={isProcessing || applicant.status === 'PAYMENT_PENDING' || applicant.status === 'APPROVED' || applicant.status === 'REJECTED'}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-foreground shadow-lg shadow-emerald-900/20"
-              >
-                <CheckCircle className="h-4 w-4 mr-2" /> Approve Documents
-              </Button>
-              {applicant.status === 'PAYMENT_PENDING' && (
+            <CardContent className="space-y-4">
+              {/* Mandatory Fee Payment Status Card */}
+              <div className={`p-3.5 rounded-xl border text-xs font-medium flex items-start gap-2.5 ${
+                isFeePaid
+                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600"
+                  : "bg-amber-500/10 border-amber-500/30 text-amber-600"
+              }`}>
+                {isFeePaid ? (
+                  <>
+                    <CheckCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold uppercase">Mandatory Fee: PAID</div>
+                      <div className="text-[11px] opacity-90">Verified by Finance Office. Ready for Final Approval.</div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold uppercase">Mandatory Fee: PENDING / UNPAID</div>
+                      <div className="text-[11px] opacity-90">Student must visit Finance Office with Reference_ID ({applicant.id?.slice(0, 8)}) to process payment.</div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {applicant.status === 'PENDING' && (
                 <Button 
-                  onClick={handlePaymentCompleted} 
+                  onClick={handleVerifyDocs} 
                   disabled={isProcessing}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-foreground shadow-lg shadow-blue-900/20"
+                  className="w-full bg-secondary hover:bg-secondary/80 text-secondary-foreground shadow-sm border border-border"
                 >
-                  <CheckCircle className="h-4 w-4 mr-2" /> Mark Payment Completed
+                  <CheckCircle className="h-4 w-4 mr-2" /> Verify Docs & Mark Pending Payment
                 </Button>
               )}
+
+              {/* Modified Approval Button: Enabled ONLY when isFeePaid is true */}
+              <Button 
+                onClick={handleApproveFinalAdmission} 
+                disabled={!isFeePaid || isProcessing || applicant.status === 'APPROVED' || applicant.status === 'REJECTED'}
+                className={`w-full font-bold shadow-lg transition-all ${
+                  isFeePaid && applicant.status !== 'APPROVED'
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-900/20"
+                    : "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
+                }`}
+              >
+                <CheckCircle className="h-4 w-4 mr-2" />
+                {applicant.status === 'APPROVED' ? "Admission Approved" : "Approve Final Admission"}
+              </Button>
+
               {applicant.status === 'APPROVED' && (
                 <Button 
                   onClick={() => window.print()} 
@@ -154,6 +190,7 @@ export default function ApplicationDetail() {
                   <FileText className="h-4 w-4 mr-2" /> Print Admission Letter
                 </Button>
               )}
+
               <Button 
                 onClick={handleReject} 
                 disabled={isProcessing || applicant.status === 'REJECTED' || applicant.status === 'APPROVED'}

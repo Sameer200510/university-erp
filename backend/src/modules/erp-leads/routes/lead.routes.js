@@ -26,9 +26,11 @@ router.get('/:id', leadController.getLead);
 
 // Admin endpoints
 router.use(verifyToken);
-router.get('/', authorizeRole('SUPER_ADMIN', 'ADMISSION_OFFICER'), leadController.getLeads);
+router.get('/', authorizeRole('SUPER_ADMIN', 'ADMISSION_OFFICER', 'FINANCE_OFFICER'), leadController.getLeads);
+router.post('/finance/process-payment', authorizeRole('SUPER_ADMIN', 'FINANCE_OFFICER'), leadController.processFinancePayment);
+router.post('/:id/finance-pay', authorizeRole('SUPER_ADMIN', 'FINANCE_OFFICER'), leadController.processFinancePayment);
 router.post('/:id/approve', authorizeRole('SUPER_ADMIN', 'ADMISSION_OFFICER'), leadController.approveLead);
 router.put('/:id/status', authorizeRole('SUPER_ADMIN', 'ADMISSION_OFFICER'), leadController.updateStatus);
-router.patch('/:id/payment', authorizeRole('SUPER_ADMIN', 'ADMISSION_OFFICER'), updatePaymentValidation, validate, leadController.updatePayment);
+router.patch('/:id/payment', authorizeRole('SUPER_ADMIN', 'ADMISSION_OFFICER', 'FINANCE_OFFICER'), updatePaymentValidation, validate, leadController.updatePayment);
 
 module.exports = router;

@@ -75,6 +75,20 @@ class LeadController {
       res.status(400).json({ success: false, message: error.message });
     }
   }
+
+  async processFinancePayment(req, res) {
+    try {
+      const adminId = req.user ? req.user.id : null;
+      const referenceId = req.body.referenceId || req.params.id;
+      if (!referenceId) {
+        return res.status(400).json({ success: false, message: "Reference_ID is required to process payment." });
+      }
+      const result = await leadService.processFinancePayment(referenceId, req.body, adminId, req.ip);
+      res.status(200).json({ success: true, message: "Fee payment successfully processed at Finance Office.", ...result });
+    } catch (error) {
+      res.status(400).json({ success: false, message: error.message });
+    }
+  }
 }
 
 module.exports = new LeadController();

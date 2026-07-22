@@ -436,17 +436,17 @@ model RevaluationApplication {
 }
 
 model AdmissionLead {
-  id              String   @id @default(uuid())
+  id              String         @id @default(uuid())
   firstName       String
   lastName        String
   email           String
   phone           String
   courseId        String?
-  status          String   @default("PENDING")
+  status          String         @default("PENDING_PAYMENT")
   documents       DocumentFile[]
   payment         Payment?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 }
 
 model DocumentFile {
@@ -462,6 +462,9 @@ model Payment {
   id              String         @id @default(uuid())
   amount          Float
   status          String         @default("PENDING")
+  paymentMode     String?        // CASH | CARD | UPI
+  transactionRef  String?
+  paidAt          DateTime?
   admissionLeadId String         @unique
   admissionLead   AdmissionLead  @relation(fields: [admissionLeadId], references: [id])
   createdAt       DateTime       @default(now())
