@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: erp_user
+      POSTGRES_PASSWORD: erp_password
+      POSTGRES_DB: erp_core
+    ports:
+      - "5455:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erp_user -d erp_core"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "5005:5005"
+    environment:
+      DATABASE_URL: postgresql://erp_user:erp_password@db:5432/erp_core
+      JWT_SECRET: production_secret_key_123
+      PORT: 5005
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "npx prisma db push --accept-data-loss && node scripts/seed-users.js && node index.js"
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

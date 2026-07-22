@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Result" ADD COLUMN     "backPapers" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "status" TEXT NOT NULL DEFAULT 'PASS';

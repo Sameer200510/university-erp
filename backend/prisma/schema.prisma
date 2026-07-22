@@ -1,0 +1,488 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMISSION_OFFICER
+  STUDENT
+}
+
+model User {
+  id             String          @id @default(uuid())
+  loginId        String          @unique
+  email          String?         @unique
+  passwordHash   String
+  role           Role
+  isFirstLogin   Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  status         String          @default("ACTIVE")
+  studentProfile StudentProfile?
+  documents      Document[]
+  admission      Admission?
+}
+
+model StudentProfile {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  firstName String
+  lastName  String
+
+  dob     DateTime?
+  phone   String?
+  address String?
+
+  course String?
+
+  rollNo       String?
+  enrollmentNo String?
+
+  branch  String?
+  section String?
+
+  currentSemester Int?
+
+  cgpa Float?
+
+  photoUrl String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum DocumentType {
+  TENTH_MARKSHEET
+  TWELFTH_MARKSHEET
+  SEMESTER_MARKSHEET
+  AADHAR_CARD
+  PAN_CARD
+  PASSPORT
+  TRANSFER_CERTIFICATE
+  CHARACTER_CERTIFICATE
+  PHOTO
+  OTHER
+}
+
+model Document {
+  id        String       @id @default(uuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id])
+  title     String
+  type      DocumentType
+  fileUrl   String
+  status    String       @default("PENDING") // PENDING, APPROVED, REJECTED
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+}
+
+model Admission {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  status    String   @default("APPLIED") // APPLIED, UNDER_REVIEW, ADMITTED, REJECTED
+  appliedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Subject {
+  id String @id @default(uuid())
+
+  code String @unique
+  name String
+
+  semester Int
+  credits  Int
+
+  facultyName String?
+
+  createdAt DateTime @default(now())
+
+  attendanceSummaries SubjectAttendanceSummary[]
+
+  marks Marks[]
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LEAVE
+}
+
+model AttendanceSummary {
+  id              String   @id @default(uuid())
+  studentId       String
+  semester        Int
+  totalClasses    Int
+  attendedClasses Int
+  percentage      Float
+  createdAt       DateTime @default(now())
+}
+
+model Attendance {
+  id String @id @default(uuid())
+
+  studentId String
+  subjectId String
+
+  date DateTime
+
+  status AttendanceStatus
+
+  createdAt DateTime @default(now())
+
+  @@unique([studentId, subjectId, date])
+  @@index([studentId])
+  @@index([subjectId])
+}
+
+model Marks {
+  id String @id @default(uuid())
+
+  studentId String
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id])
+
+  semester Int
+
+  examType  String
+  marksType String
+
+  marks Float
+
+  createdAt DateTime @default(now())
+}
+
+model Result {
+  id        String @id @default(uuid())
+  studentId String
+  semester  Int
+  sgpa      Float
+  cgpa      Float
+
+  backPapers Int @default(0)
+
+  status String @default("PASS")
+
+  createdAt DateTime @default(now())
+}
+
+model AdmitCard {
+  id        String   @id @default(uuid())
+  studentId String
+  semester  Int
+  examType  String
+  pdfUrl    String?
+  createdAt DateTime @default(now())
+}
+
+model Marksheet {
+  id        String   @id @default(uuid())
+  studentId String
+  semester  Int
+  pdfUrl    String?
+  createdAt DateTime @default(now())
+}
+
+model SemesterRegistration {
+  id String @id @default(uuid())
+
+  studentId String
+
+  currentSemester Int
+  nextSemester    Int
+
+  status String @default("PENDING")
+
+  registeredAt DateTime @default(now())
+
+  approvedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Faculty {
+  id String @id @default(uuid())
+
+  name       String
+  department String?
+
+  createdAt DateTime @default(now())
+}
+
+model FeedbackWindow {
+  id String @id @default(uuid())
+
+  semester Int
+
+  isActive Boolean @default(false)
+
+  startDate DateTime
+  endDate   DateTime
+
+  createdAt DateTime @default(now())
+}
+
+model Feedback {
+  id String @id @default(uuid())
+
+  studentId String
+
+  facultyId String
+
+  rating Int
+
+  comment String?
+
+  semester Int
+
+  createdAt DateTime @default(now())
+
+  @@unique([studentId, facultyId, semester])
+}
+
+model FeeStructure {
+  id String @id @default(uuid())
+
+  studentId String
+
+  totalFee Float
+
+  scholarship Float @default(0)
+
+  netFee Float
+
+  durationYears Int
+
+  totalSemesters Int
+
+  createdAt DateTime @default(now())
+
+  installments FeeInstallment[]
+}
+
+model FeeInstallment {
+  id String @id @default(uuid())
+
+  feeStructureId String
+
+  studentId String
+
+  semester Int
+
+  amount Float
+
+  dueDate DateTime
+
+  status String @default("PENDING")
+
+  paidAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  feeStructure FeeStructure @relation(fields: [feeStructureId], references: [id])
+
+  payments FeePayment[]
+}
+
+model FeePayment {
+  id String @id @default(uuid())
+
+  installmentId String
+
+  studentId String
+
+  amount Float
+
+  transactionId String
+
+  paymentMode String
+
+  status String
+
+  paidAt DateTime @default(now())
+
+  installment FeeInstallment @relation(fields: [installmentId], references: [id])
+
+  receipt FeeReceipt?
+}
+
+model FeeReceipt {
+  id String @id @default(uuid())
+
+  paymentId String @unique
+
+  receiptNo String @unique
+
+  pdfUrl String?
+
+  createdAt DateTime @default(now())
+
+  payment FeePayment @relation(fields: [paymentId], references: [id])
+}
+
+model SubjectAttendanceSummary {
+  id String @id @default(uuid())
+
+  studentId String
+
+  subjectId String
+
+  subject Subject @relation(fields: [subjectId], references: [id])
+
+  semester Int
+
+  totalClasses Int
+
+  attendedClasses Int
+
+  percentage Float
+
+  createdAt DateTime @default(now())
+
+  @@unique([studentId, subjectId])
+  @@index([studentId])
+  @@index([subjectId])
+}
+
+model AdmitCardConfig {
+  id String @id @default(uuid())
+
+  minimumAttendance Float @default(75)
+
+  isReleased Boolean @default(false)
+
+  createdAt DateTime @default(now())
+}
+
+model AdmitCardRelease {
+  id String @id @default(uuid())
+
+  semester Int
+
+  examType String
+
+  isReleased Boolean @default(false)
+
+  releasedAt DateTime?
+}
+
+model AttendanceRelaxation {
+  id String @id @default(uuid())
+
+  studentId String
+
+  subjectId String
+
+  reason String
+
+  documentUrl String?
+
+  status String @default("PENDING")
+
+  createdAt DateTime @default(now())
+}
+
+model BackPaperApplication {
+  id String @id @default(uuid())
+
+  studentId String
+
+  subjectCode String
+  subjectName String
+
+  semester Int
+
+  fee Float @default(1500)
+
+  status        String @default("PENDING")
+  paymentStatus String @default("UNPAID")
+
+  appliedAt DateTime @default(now())
+}
+
+model RevaluationApplication {
+  id String @id @default(uuid())
+
+  studentId String
+
+  subjectId String
+
+  semester Int
+
+  reason String?
+
+  fee Float @default(1000)
+
+  status String @default("PENDING")
+
+  appliedAt DateTime @default(now())
+}
+
+model AdmissionLead {
+  id              String   @id @default(uuid())
+  firstName       String
+  lastName        String
+  email           String
+  phone           String
+  courseId        String?
+  status          String   @default("PENDING")
+  documents       DocumentFile[]
+  payment         Payment?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model DocumentFile {
+  id              String         @id @default(uuid())
+  fileUrl         String
+  status          String         @default("PENDING")
+  admissionLeadId String
+  admissionLead   AdmissionLead  @relation(fields: [admissionLeadId], references: [id])
+  createdAt       DateTime       @default(now())
+}
+
+model Payment {
+  id              String         @id @default(uuid())
+  amount          Float
+  status          String         @default("PENDING")
+  admissionLeadId String         @unique
+  admissionLead   AdmissionLead  @relation(fields: [admissionLeadId], references: [id])
+  createdAt       DateTime       @default(now())
+}
+
+model Course {
+  id          String   @id @default(uuid())
+  name        String
+  code        String   @unique
+  description String?
+  fee         Float    @default(0)
+}
+
+model Batch {
+  id          String   @id @default(uuid())
+  name        String
+  year        Int
+  courseId    String
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  action      String
+  entityType  String
+  entityId    String
+  oldValue    String?
+  newValue    String?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+}
+
